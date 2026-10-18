@@ -282,6 +282,10 @@ namespace Linuxmotehook {
 							needs_update = true;
 							break;
 						case MOTION_PLUS:
+							// MotionPlus delivers samples far more often than the accelerometer
+							// (and the accelerometer sends nothing while values stay the same),
+							// so advance the motion timestamp on gyro samples too.
+							motion_timestamp = ev.time_sec * 1000000 + ev.time_usec;
 							process_gyroscope(ev.abs[0]);
 							needs_update = true;
 							break;
