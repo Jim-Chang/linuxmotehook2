@@ -492,7 +492,30 @@ namespace Linuxmotehook {
 
 		public Cemuhook.DeviceType get_device_type() { return devtype; }
 		public Cemuhook.ConnectionType get_connection_type() { return BLUETOOTH; }
+		/*
+		 * Reading the battery level makes hid-wiimote send a status request to the
+		 * remote and wait for its reply (about 30 ms over Bluetooth). gcemuhook asks
+		 * for it in every DSU packet, which blocked the main loop and capped the
+		 * output at ~30 packets/s even though MotionPlus delivers ~90 samples/s.
+		 * Cache the value and refresh it only every BATTERY_REFRESH_US
+		 * (sooner while it is still unavailable right after connecting).
+		 */
+		private const int64 BATTERY_REFRESH_US = 30 * 1000000;
+		private const int64 BATTERY_RETRY_US = 2 * 1000000;
+		private Cemuhook.BatteryStatus battery_status = NA;
+		private int64 battery_checked_at = 0;
+
 		public Cemuhook.BatteryStatus get_battery() {
+			var now = get_monotonic_time();
+			var interval = (battery_status == NA) ? BATTERY_RETRY_US : BATTERY_REFRESH_US;
+			if (battery_checked_at == 0 || now - battery_checked_at >= interval) {
+				battery_checked_at = now;
+				battery_status = read_battery_status();
+			}
+			return battery_status;
+		}
+
+		private Cemuhook.BatteryStatus read_battery_status() {
 			try {
 				// Fully charged is about 71 (52 for rechargable batteries)
 				// 4 LEDs up to about 33
