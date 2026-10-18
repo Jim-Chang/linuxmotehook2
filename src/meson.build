@@ -21,6 +21,9 @@ linuxmotehook2_deps = [
 
   xwiimote_dep,
   meson.get_compiler('vala').find_library('xwiimote', dirs: extra_vapi_dir),
+
+  # IR pointer maths (atan2, sin, cos)
+  meson.get_compiler('c').find_library('m', required: false),
 ]
 
 linuxmotehook2 = executable ('linuxmotehook2', linuxmotehook2_sources,
