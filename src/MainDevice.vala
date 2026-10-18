@@ -38,7 +38,9 @@ namespace Linuxmotehook {
 		private uint64 mac = Cemuhook.MAC_UNAVAILABLE;
 
 		private const float ACCEL_UNITS_PER_G = 102.5f;
-		private const float GYRO_UNITS_PER_DEG_PER_SEC = 189.5f;
+		// hid-wiimote reports MotionPlus rates at 8192 * 9 / 440 (~167.564) units per deg/s
+		// (see wiimod_mp_in_mp() in drivers/hid/hid-wiimote-modules.c)
+		private const float GYRO_UNITS_PER_DEG_PER_SEC = 8192f * 9f / 440f;
 
 		private ExtensionDevice? extension = null;
 
