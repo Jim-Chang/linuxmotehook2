@@ -237,7 +237,7 @@ namespace XWiimote {
 		private int _set_led(uint led, bool state);
 
 		[CCode (cname = "xwii_iface_set_led_vala")]
-		void set_led(uint led, bool state) throws GLib.IOError {
+		public void set_led(uint led, bool state) throws GLib.IOError {
 			Utils.error_check(_set_led(led, state));
 		}
 

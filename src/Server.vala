@@ -24,6 +24,10 @@ namespace Linuxmotehook {
 
 		private IOSource monitor_source;
 
+		// Same order as the DSU slots: Cemuhook.Server keeps devices in connection order
+		// and shifts later ones down when one disconnects
+		private Gee.ArrayList<MainDevice> players = new Gee.ArrayList<MainDevice>();
+
 		public Server(uint16 port = 26760, MainContext? context = null) throws GLib.Error {
 			base(port, context);
 			new LMApplication().hold();
@@ -72,13 +76,29 @@ namespace Linuxmotehook {
 				var? devconf = conf.get_device_config(mac);
 				if (devconf != null) {
 					print("Found wiimote %s - connecting... ", format_mac(mac));
-					add_device(new MainDevice((owned)dev, (owned)devconf));
+					var device = new MainDevice((owned)dev, (owned)devconf);
+					add_device(device);
 					print("done!\n");
+					players.add(device);
+					device.disconnected.connect(on_player_disconnected);
+					update_player_leds();
 				} else {
 					print("Wiimote %s not in config - skipping\n", format_mac(mac));
 				}
 			} catch(Error e) {
 				warning("Failed to setup wiimote: %s", e.message);
+			}
+		}
+
+		private void on_player_disconnected(Cemuhook.AbstractPhysicalDevice dev) {
+			players.remove((MainDevice)dev);
+			update_player_leds();
+		}
+
+		// Light player LED n on the wiimote in DSU slot n-1, like a Wii does
+		private void update_player_leds() {
+			for (var i = 0; i < players.size; i++) {
+				players[i].set_player((uint)i + 1);
 			}
 		}
 	}

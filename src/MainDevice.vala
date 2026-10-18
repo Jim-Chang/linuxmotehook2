@@ -63,6 +63,47 @@ namespace Linuxmotehook {
 			update_interfaces(true);
 		}
 
+		/*
+		 * Player LEDs. Right after connecting, the LED files in sysfs may not be
+		 * writable yet (udev fixes their permissions), so retry for a while.
+		 */
+		private const uint LED_RETRY_MS = 1000;
+		private const int LED_MAX_RETRIES = 10;
+		private uint player = 0;
+		private uint led_retry_source = 0;
+		private int led_retries = 0;
+
+		public void set_player(uint new_player) {
+			if (new_player == player)
+				return;
+			player = new_player;
+			led_retries = 0;
+			if (apply_player_leds(false) || led_retry_source != 0)
+				return;
+			led_retry_source = GLib.Timeout.add(LED_RETRY_MS, () => {
+				var last_try = ++led_retries >= LED_MAX_RETRIES;
+				if (apply_player_leds(last_try) || last_try) {
+					led_retry_source = 0;
+					return Source.REMOVE;
+				}
+				return Source.CONTINUE;
+			});
+		}
+
+		private bool apply_player_leds(bool warn) {
+			try {
+				for (uint led = 1; led <= 4; led++) {
+					dev.set_led(led, led == player);
+				}
+				print("Wiimote %s is player %u\n", format_mac(mac), player);
+				return true;
+			} catch (IOError e) {
+				if (warn)
+					warning("Failed to set player LEDs of wiimote %s: %s", format_mac(mac), e.message);
+				return false;
+			}
+		}
+
 		~MainDevice() {
 			debug("In MainDevice destructor");
 			if (dev_source != null)
