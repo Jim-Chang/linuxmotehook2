@@ -1,0 +1,140 @@
+# xwiimote: struct input_event 在 64 位元 time_t 的 32 位元平台(例如 Debian 13 armhf)
+# 沒有 .time 欄位,改用 linux/input.h 的 input_event_sec / input_event_usec 巨集。
+# 由 wiimote-motion 專案加入(patches/linuxmotehook2/0001-xwiimote-time64.patch)。
+--- a/lib/core.c	2026-10-17 22:24:44
++++ b/lib/core.c	2026-10-17 22:24:44
+@@ -943,7 +943,7 @@
+ 	}
+ 
+ 	memset(ev, 0, sizeof(*ev));
+-	memcpy(&ev->time, &input.time, sizeof(struct timeval));
++	ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 	ev->type = XWII_EVENT_KEY;
+ 	ev->v.key.code = key;
+ 	ev->v.key.state = input.value;
+@@ -973,7 +973,7 @@
+ 
+ 	if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(ev->v.abs, &dev->accel_cache, sizeof(dev->accel_cache));
+ 		ev->type = XWII_EVENT_ACCEL;
+ 		return 0;
+@@ -1015,7 +1015,7 @@
+ 
+ 	if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->ir_cache, sizeof(dev->ir_cache));
+ 		ev->type = XWII_EVENT_IR;
+ 		return 0;
+@@ -1067,7 +1067,7 @@
+ 
+ 	if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 
+ 		ev->v.abs[0].x = dev->mp_cache.x - dev->mp_normalizer.x / 100;
+ 		ev->v.abs[0].y = dev->mp_cache.y - dev->mp_normalizer.y / 100;
+@@ -1134,7 +1134,7 @@
+ 		}
+ 
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		ev->type = XWII_EVENT_NUNCHUK_KEY;
+ 		ev->v.key.code = key;
+ 		ev->v.key.state = input.value;
+@@ -1152,7 +1152,7 @@
+ 			dev->nunchuk_cache[1].z = input.value;
+ 	} else if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->nunchuk_cache,
+ 		       sizeof(dev->nunchuk_cache));
+ 		ev->type = XWII_EVENT_NUNCHUK_MOVE;
+@@ -1240,7 +1240,7 @@
+ 		}
+ 
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		ev->type = XWII_EVENT_CLASSIC_CONTROLLER_KEY;
+ 		ev->v.key.code = key;
+ 		ev->v.key.state = input.value;
+@@ -1260,7 +1260,7 @@
+ 			dev->classic_cache[2].x = input.value;
+ 	} else if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->classic_cache,
+ 		       sizeof(dev->classic_cache));
+ 		ev->type = XWII_EVENT_CLASSIC_CONTROLLER_MOVE;
+@@ -1294,7 +1294,7 @@
+ 
+ 	if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->bboard_cache,
+ 		       sizeof(dev->bboard_cache));
+ 		ev->type = XWII_EVENT_BALANCE_BOARD;
+@@ -1423,7 +1423,7 @@
+ 		}
+ 
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		ev->type = XWII_EVENT_PRO_CONTROLLER_KEY;
+ 		ev->v.key.code = key;
+ 		ev->v.key.state = input.value;
+@@ -1439,7 +1439,7 @@
+ 			dev->pro_cache[1].y = input.value;
+ 	} else if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->pro_cache,
+ 		       sizeof(dev->pro_cache));
+ 		ev->type = XWII_EVENT_PRO_CONTROLLER_MOVE;
+@@ -1488,7 +1488,7 @@
+ 		}
+ 
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		ev->type = XWII_EVENT_DRUMS_KEY;
+ 		ev->v.key.code = key;
+ 		ev->v.key.state = input.value;
+@@ -1535,7 +1535,7 @@
+ 			dev->drums_cache[XWII_DRUMS_ABS_HI_HAT].x = input.value;
+ 	} else if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->drums_cache,
+ 		       sizeof(dev->drums_cache));
+ 		ev->type = XWII_EVENT_DRUMS_MOVE;
+@@ -1625,7 +1625,7 @@
+ 		}
+ 
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		ev->type = XWII_EVENT_GUITAR_KEY;
+ 		ev->v.key.code = key;
+ 		ev->v.key.state = input.value;
+@@ -1647,7 +1647,7 @@
+ 			dev->guitar_cache[2].x = input.value;
+ 	} else if (input.type == EV_SYN) {
+ 		memset(ev, 0, sizeof(*ev));
+-		memcpy(&ev->time, &input.time, sizeof(struct timeval));
++		ev->time.tv_sec = input.input_event_sec; ev->time.tv_usec = input.input_event_usec;
+ 		memcpy(&ev->v.abs, dev->guitar_cache,
+ 		       sizeof(dev->guitar_cache));
+ 		ev->type = XWII_EVENT_GUITAR_MOVE;

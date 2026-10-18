@@ -5,3 +5,4 @@ revision = 8c3a4bf45d8699ca1369613c3c10eb32c3a7c71a
 depth = 1
 
 patch_directory = xwiimote
+diff_files = xwiimote-time64.patch
