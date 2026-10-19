@@ -278,9 +278,10 @@ namespace Linuxmotehook {
 			var rx = cx * Math.cos(-angle) - cy * Math.sin(-angle);
 			var ry = cx * Math.sin(-angle) + cy * Math.cos(-angle);
 
-			// Pointing right / up moves the sensor bar left / down in the image
+			// Pointing right moves the sensor bar towards smaller x in the image,
+			// pointing down towards larger y (measured with a third-party remote)
 			pointer_x = (-rx / IR_HALF_WIDTH).clamp(-1, 1);
-			pointer_y = (ry / IR_HALF_HEIGHT).clamp(-1, 1);
+			pointer_y = (-ry / IR_HALF_HEIGHT).clamp(-1, 1);
 			pointer_valid = true;
 			update_pointer_fields();
 		}
