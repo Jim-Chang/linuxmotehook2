@@ -737,10 +737,42 @@ namespace Linuxmotehook {
 
 		private void process_gyroscope(XWiimote.EventAbs inp) {
 			gyroscope = Cemuhook.MotionData() {
-				x = ((float)inp.z) / GYRO_UNITS_PER_DEG_PER_SEC,
-				y = ((float)inp.x) / GYRO_UNITS_PER_DEG_PER_SEC,
-				z = ((float)inp.y) / GYRO_UNITS_PER_DEG_PER_SEC,
+				x = filter_gyro_axis(0, ((float)inp.z) / GYRO_UNITS_PER_DEG_PER_SEC),
+				y = filter_gyro_axis(1, ((float)inp.x) / GYRO_UNITS_PER_DEG_PER_SEC),
+				z = filter_gyro_axis(2, ((float)inp.y) / GYRO_UNITS_PER_DEG_PER_SEC),
 			};
+		}
+
+		/*
+		 * Some third-party remotes occasionally deliver a MotionPlus sample with bits
+		 * of one axis cleared (seen in the raw HID reports), which reads as a single
+		 * sample of several hundred deg/s. They always point the same way, so an
+		 * integrated orientation drifts. With the IR camera on they happen about
+		 * four times a second.
+		 *
+		 * Hold the previous value when a sample is far from the linear extrapolation
+		 * of the last two, but never twice in a row: a real fast movement is only
+		 * delayed by one sample.
+		 */
+		private const float GYRO_SPIKE_DPS = 150f;
+		private float gyro_last[3];
+		private float gyro_prev[3];
+		private bool gyro_held[3];
+		private bool gyro_have_history = false;
+
+		private float filter_gyro_axis(int axis, float value) {
+			var predicted = 2 * gyro_last[axis] - gyro_prev[axis];
+			if (gyro_have_history && !gyro_held[axis] && Math.fabsf(value - predicted) > GYRO_SPIKE_DPS) {
+				gyro_held[axis] = true;
+				return gyro_last[axis];
+			}
+			// After a held sample the slope is unknown; restart it from this sample
+			gyro_prev[axis] = gyro_held[axis] ? value : gyro_last[axis];
+			gyro_last[axis] = value;
+			gyro_held[axis] = false;
+			if (axis == 2)
+				gyro_have_history = true;
+			return value;
 		}
 
 		private void destroy() {
