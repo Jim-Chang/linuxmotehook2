@@ -763,8 +763,11 @@ namespace Linuxmotehook {
 		 * output at ~30 packets/s even though MotionPlus delivers ~90 samples/s.
 		 * Cache the value and refresh it only every BATTERY_REFRESH_US
 		 * (sooner while it is still unavailable right after connecting).
+		 * Every request also takes the link out of Bluetooth sniff mode (the kernel
+		 * forces active mode before sending), which a separate helper keeps the
+		 * link in for steadier reports, so ask rarely.
 		 */
-		private const int64 BATTERY_REFRESH_US = 30 * 1000000;
+		private const int64 BATTERY_REFRESH_US = 120 * 1000000;
 		private const int64 BATTERY_RETRY_US = 2 * 1000000;
 		private Cemuhook.BatteryStatus battery_status = NA;
 		private int64 battery_checked_at = 0;
