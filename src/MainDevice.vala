@@ -113,8 +113,13 @@ namespace Linuxmotehook {
 		/*
 		 * Pointer mode. Long-pressing Home switches between the gyro pointer (IR camera
 		 * off, as before) and the IR pointer (IR camera on); the player LED blinks and
-		 * the wiimote rumbles once for gyro, twice for IR. A short Home press is sent
-		 * when Home is released.
+		 * the wiimote rumbles once for gyro, twice for IR.
+		 *
+		 * Double-tapping Home recenters the gyro pointer: SHARE (unused otherwise) is
+		 * held for a moment, and the Dolphin profile turns the gyro pointer off while
+		 * SHARE is down, which resets it to "pointing at the center" (Dolphin clears the
+		 * pointer state whenever it is disabled). A single short Home press is sent
+		 * once the double-tap window has passed without a second tap.
 		 *
 		 * In IR mode the pointer goes out in the stick fields, which a wiimote doesn't
 		 * otherwise use (extensions are separate devices). Each axis is 14 bits: high 7
@@ -124,6 +129,8 @@ namespace Linuxmotehook {
 		 */
 		private const uint HOME_LONG_PRESS_MS = 1000;
 		private const uint HOME_TAP_MS = 100;
+		private const uint HOME_DOUBLE_TAP_MS = 300;
+		private const uint RECENTER_PULSE_MS = 50;
 		private const uint SIGNAL_STEP_MS = 150;
 		private const double IR_CENTER_X = 511.5;
 		private const double IR_CENTER_Y = 383.5;
@@ -132,6 +139,9 @@ namespace Linuxmotehook {
 
 		private bool ir_mode = false;
 		private uint home_timer = 0;
+		// Waiting for a possible second tap after a short Home press
+		private uint home_tap_timer = 0;
+		private bool home_second_tap = false;
 		private uint signal_source = 0;
 
 		private bool pointer_valid = false;
@@ -147,6 +157,13 @@ namespace Linuxmotehook {
 		private void process_home(XWiimote.EventKeyState state) {
 			switch (state) {
 				case DOWN:
+					if (home_tap_timer != 0) {
+						Source.remove(home_tap_timer);
+						home_tap_timer = 0;
+						home_second_tap = true;
+						recenter_gyro_pointer();
+						break;
+					}
 					if (home_timer != 0)
 						Source.remove(home_timer);
 					home_timer = GLib.Timeout.add(HOME_LONG_PRESS_MS, () => {
@@ -156,20 +173,38 @@ namespace Linuxmotehook {
 					});
 					break;
 				case UP:
+					if (home_second_tap) {
+						home_second_tap = false;
+						break;
+					}
 					if (home_timer == 0)
 						break; // long press already handled
 					Source.remove(home_timer);
 					home_timer = 0;
-					base_data.buttons |= Cemuhook.Buttons.OPTIONS;
-					GLib.Timeout.add(HOME_TAP_MS, () => {
-						base_data.buttons &= ~Cemuhook.Buttons.OPTIONS;
-						updated();
+					home_tap_timer = GLib.Timeout.add(HOME_DOUBLE_TAP_MS, () => {
+						home_tap_timer = 0;
+						pulse_button(Cemuhook.Buttons.OPTIONS, HOME_TAP_MS);
 						return Source.REMOVE;
 					});
 					break;
 				case AUTOREPEAT:
 					break;
 			}
+		}
+
+		private void recenter_gyro_pointer() {
+			pulse_button(Cemuhook.Buttons.SHARE, RECENTER_PULSE_MS);
+			print("Wiimote %s: recenter gyro pointer\n", format_mac(mac));
+		}
+
+		private void pulse_button(Cemuhook.Buttons btn, uint ms) {
+			base_data.buttons |= btn;
+			updated();
+			GLib.Timeout.add(ms, () => {
+				base_data.buttons &= ~btn;
+				updated();
+				return Source.REMOVE;
+			});
 		}
 
 		private void set_ir_mode(bool enable) {
