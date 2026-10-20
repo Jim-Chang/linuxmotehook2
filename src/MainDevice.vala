@@ -544,38 +544,47 @@ namespace Linuxmotehook {
 		private bool process_incoming() {
 			/*
 			 * Sending key events instantly allows to win a little bit of latency.
-			 * This can't be done with motion and sticks due to their "spammy" nature.
+			 * Sticks are sent once per batch due to their "spammy" nature, but every
+			 * MotionPlus sample is sent: Bluetooth often delivers two reports at once,
+			 * and a client integrating the gyroscope would lose the first one.
 			 */
 			try {
 				bool needs_update = false;
 				bool extension_needs_update = false;
+				bool gyro_unsent = false;
 				for (var? ev = dev.poll(); ev != null; ev = dev.poll()) {
 					switch (ev.type) {
 						case KEY:
 							process_key(ev.key.code, ev.key.state);
 							updated();
 							needs_update = false;
+							gyro_unsent = false;
 							break;
 						case PRO_CONTROLLER_KEY:
 							process_pro_controller_key(ev.key.code, ev.key.state);
 							updated();
 							needs_update = false;
+							gyro_unsent = false;
 							break;
 						case PRO_CONTROLLER_MOVE:
 							process_pro_controller_movement(ev.abs[0], ev.abs[1]);
 							needs_update = true;
 							break;
 						case ACCEL:
-							motion_timestamp = ev.time_sec * 1000000 + ev.time_usec;
 							process_accelerometer(ev.abs[0]);
-							needs_update = true;
+							// With MotionPlus the accelerometer rides along with the next gyro
+							// sample (it sends nothing while its values stay the same anyway)
+							if (!(MOTION_PLUS in dev.opened())) {
+								advance_motion_timestamp((int64)ev.time_sec * 1000000 + ev.time_usec);
+								needs_update = true;
+							}
 							break;
 						case MOTION_PLUS:
-							// MotionPlus delivers samples far more often than the accelerometer
-							// (and the accelerometer sends nothing while values stay the same),
-							// so advance the motion timestamp on gyro samples too.
-							motion_timestamp = ev.time_sec * 1000000 + ev.time_usec;
+							if (gyro_unsent)
+								updated();
+							advance_motion_timestamp((int64)ev.time_sec * 1000000 + ev.time_usec);
 							process_gyroscope(ev.abs[0]);
+							gyro_unsent = true;
 							needs_update = true;
 							break;
 						case IR:
@@ -760,6 +769,41 @@ namespace Linuxmotehook {
 			base_data.left_y = apply_stick_calibration(left.y, calibr[1], calibr[3]);
 			base_data.right_x = apply_stick_calibration(right.x, calibr[4], calibr[6]);
 			base_data.right_y = apply_stick_calibration(right.y, calibr[5], calibr[7]);
+		}
+
+		/*
+		 * Motion timestamps. The wiimote samples at a steady rate (about 188 reports/s)
+		 * but Bluetooth delivers reports in batches: two at a time in sniff mode, and
+		 * about 20 at once after a radio pause. Arrival times are therefore bunched,
+		 * and integrating with them is far off (closure error of a 40 s circling test:
+		 * 159 deg vs 50 deg with even spacing). Instead, step each sample by the long-run
+		 * average interval, never ahead of its arrival, and catch up slowly when behind.
+		 * Packets that carry no new sample (key events) repeat the timestamp.
+		 */
+		private const double SAMPLE_PERIOD_ALPHA = 0.001;
+		private const double SAMPLE_CATCH_UP = 0.005;
+		private const int64 SAMPLE_GAP_US = 200000;
+		private const int64 SAMPLE_RESYNC_US = 500000;
+		private double sample_period_us = 5320;
+		private int64 last_arrival_us = 0;
+
+		private void advance_motion_timestamp(int64 arrival) {
+			var interval = arrival - last_arrival_us;
+			var previous = (double)motion_timestamp;
+			double next;
+			if (last_arrival_us == 0 || interval > SAMPLE_RESYNC_US) {
+				next = arrival;
+			} else {
+				if (interval < SAMPLE_GAP_US)
+					sample_period_us += (interval - sample_period_us) * SAMPLE_PERIOD_ALPHA;
+				var predicted = previous + sample_period_us;
+				next = arrival <= predicted ? arrival : predicted + (arrival - predicted) * SAMPLE_CATCH_UP;
+				if (arrival - next > SAMPLE_RESYNC_US)
+					next = arrival;
+				next = Math.fmax(next, previous);
+			}
+			last_arrival_us = arrival;
+			motion_timestamp = (uint64)next;
 		}
 
 		private void process_accelerometer(XWiimote.EventAbs inp) {
