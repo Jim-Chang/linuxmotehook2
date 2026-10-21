@@ -552,7 +552,13 @@ namespace Linuxmotehook {
 				bool needs_update = false;
 				bool extension_needs_update = false;
 				bool gyro_unsent = false;
+				bool mp_sample = false;
+				bool other_input = false;
 				for (var? ev = dev.poll(); ev != null; ev = dev.poll()) {
+					if (ev.type == MOTION_PLUS)
+						mp_sample = true;
+					else
+						other_input = true;
 					switch (ev.type) {
 						case KEY:
 							process_key(ev.key.code, ev.key.state);
@@ -584,6 +590,7 @@ namespace Linuxmotehook {
 								updated();
 							advance_motion_timestamp((int64)ev.time_sec * 1000000 + ev.time_usec);
 							process_gyroscope(ev.abs[0]);
+							note_mp_sample();
 							gyro_unsent = true;
 							needs_update = true;
 							break;
@@ -605,6 +612,9 @@ namespace Linuxmotehook {
 							extension_needs_update = true;
 							break;
 						case WATCH:
+							// Extension hotplug: hid-wiimote stops MotionPlus data while it
+							// re-detects, so the packet sent below must not repeat the last rate
+							zero_gyro();
 							update_interfaces();
 							needs_update = true;
 							break;
@@ -616,6 +626,9 @@ namespace Linuxmotehook {
 							break;
 					}
 				}
+
+				if (other_input && !mp_sample && mp_stalled(MP_STALL_US))
+					confirm_mp_stall();
 
 				if (needs_update) {
 					updated();
@@ -772,6 +785,89 @@ namespace Linuxmotehook {
 		}
 
 		/*
+		 * Stale gyro. Dolphin integrates the latest packet's rate until a new one
+		 * arrives, so when MotionPlus samples stop the last rate must not stay out
+		 * there: unplugging the Nunchuk makes hid-wiimote re-detect extensions and
+		 * forward no MotionPlus data for about 0.4 s, and the last sample is usually
+		 * the jerk of pulling the plug (+178 deg/s, enough to turn the pointer
+		 * about 70 deg off screen).
+		 *
+		 * Send gyro = 0 when samples have stopped for MP_STALL_US while the wiimote
+		 * is still sending other data (accelerometer, keys), which is what a
+		 * re-detection looks like. Bluetooth also pauses for about 0.1 s every
+		 * 1.12 s (100-146 ms measured), but then nothing at all arrives and the
+		 * samples come afterwards in one batch; holding the last rate through those
+		 * keeps Dolphin's pointer moving instead of stopping it, so only when
+		 * nothing has arrived for MP_SILENCE_MS is the rate zeroed as well.
+		 * The batch after such a pause often starts with a Nunchuk report less than
+		 * 1 ms before the MotionPlus one (a stray zero after 17 of 35 pauses), so
+		 * wait MP_STALL_CONFIRM_MS for a sample before zeroing.
+		 * The zero packet repeats the motion timestamp: it carries no new sample.
+		 */
+		private const int64 MP_STALL_US = 30000;
+		private const uint MP_STALL_CONFIRM_MS = 5;
+		private const uint MP_SILENCE_MS = 200;
+		private int64 mp_sample_at = 0;
+		private bool gyro_zeroed = true;
+		private uint mp_stall_timer = 0;
+		private uint mp_silence_timer = 0;
+
+		private void note_mp_sample() {
+			mp_sample_at = get_monotonic_time();
+			gyro_zeroed = false;
+			if (mp_silence_timer == 0)
+				arm_mp_silence_timer(MP_SILENCE_MS);
+		}
+
+		private bool mp_stalled(int64 us) {
+			return !gyro_zeroed && (MOTION_PLUS in dev.opened()) && get_monotonic_time() - mp_sample_at >= us;
+		}
+
+		private void confirm_mp_stall() {
+			if (mp_stall_timer != 0)
+				return;
+			mp_stall_timer = GLib.Timeout.add(MP_STALL_CONFIRM_MS, () => {
+				mp_stall_timer = 0;
+				// A sample in the meantime resets mp_sample_at
+				if (mp_stalled(MP_STALL_US)) {
+					zero_gyro();
+					updated();
+				}
+				return Source.REMOVE;
+			});
+		}
+
+		// Checks when the last sample is MP_SILENCE_MS old; re-armed for the rest while samples keep coming
+		private void arm_mp_silence_timer(uint ms) {
+			mp_silence_timer = GLib.Timeout.add(ms, () => {
+				mp_silence_timer = 0;
+				if (gyro_zeroed)
+					return Source.REMOVE;
+				var left_us = (int64)MP_SILENCE_MS * 1000 - (get_monotonic_time() - mp_sample_at);
+				if (left_us > 0) {
+					arm_mp_silence_timer((uint)(left_us / 1000) + 1);
+				} else if (mp_stalled(0)) {
+					zero_gyro();
+					updated();
+				}
+				return Source.REMOVE;
+			});
+		}
+
+		private void zero_gyro() {
+			gyroscope = Cemuhook.MotionData() {
+				x = 0f,
+				y = 0f,
+				z = 0f
+			};
+			gyro_zeroed = true;
+			// The spike filter's slope is meaningless across the gap; restart it from the next sample
+			gyro_have_history = false;
+			for (var axis = 0; axis < 3; axis++)
+				gyro_held[axis] = true;
+		}
+
+		/*
 		 * Motion timestamps. The wiimote samples at a steady rate (about 188 reports/s)
 		 * but Bluetooth delivers reports in batches: two at a time in sniff mode, and
 		 * about 20 at once after a radio pause. Arrival times are therefore bunched,
@@ -855,6 +951,14 @@ namespace Linuxmotehook {
 		}
 
 		private void destroy() {
+			if (mp_stall_timer != 0) {
+				Source.remove(mp_stall_timer);
+				mp_stall_timer = 0;
+			}
+			if (mp_silence_timer != 0) {
+				Source.remove(mp_silence_timer);
+				mp_silence_timer = 0;
+			}
 			if (mac != Cemuhook.MAC_UNAVAILABLE)
 				print("WiiMote %s disconnected\n", format_mac(mac));
 
